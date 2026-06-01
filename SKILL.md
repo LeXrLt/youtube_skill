@@ -1,84 +1,123 @@
 ---
-name: youtube-subtitle-downloader
-description: Download subtitles for all videos from a YouTube channel. Supports Chinese, English and auto-generated subtitles with resume capability.
+name: youtube-query
+description: Query YouTube channels and video subtitles stored in the local PostgreSQL database using natural language. Search videos by channel, keyword, or status; list channels; view full subtitle text; and see statistics. Read-only — no data modification.
 metadata:
-  {
-    "openclaw":
-      {
-        "emoji": "📺",
-        "requires": { "bins": ["python3"], "os": ["linux", "darwin"] },
-      },
-  }
+  openclaw:
+    emoji: "📺"
+    requires:
+      bins:
+        - python3
 ---
 
-# YouTube Subtitle Downloader
+# YouTube Subtitle Database Query Skill
 
-## What it does
+This skill answers natural-language questions about YouTube videos and their
+subtitles that have been previously crawled and stored in a PostgreSQL database
+(`youtube_channels` and `youtube_videos` tables).
 
-Downloads subtitles for all videos from a specified YouTube channel. Supports:
+**This skill is strictly read-only. It never inserts, updates, or deletes any data.**
 
-- Simplified Chinese → English → default language fallback
-- Breakpoint resume (interrupted downloads can be continued)
-- Incremental updates (only downloads new videos)
-- Rate limiting detection (auto-stops on HTTP 429)
+## When to use
 
-## Inputs needed
+Use this skill when the user wants to:
+- Read or search YouTube video subtitles from the database
+- List channels that have been crawled
+- Find videos by channel, keyword, or status
+- View the full subtitle text of a specific video
+- Get statistics on crawled YouTube content
 
-- **Channel handle**: The YouTube channel handle (e.g. `thu4878`, `laogao`, `3blue1brown`). Can also be a full URL like `https://www.youtube.com/@thu4878`.
-- The project lives at `{baseDir}` and requires `cookies.txt` in that directory for YouTube authentication.
+Do **NOT** use this skill when the user wants to crawl/download new subtitles from
+YouTube (that is the crawler workflow in `main.py`).
 
-## Workflow
+If the database is not yet set up (no `.venv/` or `.env`, or connection errors),
+run the **`youtube-setup`** skill (`SKILL_SETUP.md`) first.
 
-1. Parse the user's request to extract the YouTube channel handle or URL.
-   - If the user says something like "下载 thu4878 频道的字幕", extract `thu4878`.
-   - If the user provides a full URL like `https://www.youtube.com/@thu4878`, use it directly.
-   - Strip any leading `@` from the handle.
+## How to use
 
-2. Run the download script:
+Translate the user's natural-language request into one of the commands below.
+All commands share the same base invocation:
 
-   ```bash
-   cd {baseDir} && .venv/bin/python channel_subtitles.py <channel_handle_or_url>
-   ```
+```bash
+{baseDir}/.venv/bin/python {baseDir}/query_db.py <command> [options]
+```
 
-   This command may run for a long time depending on the number of videos. Run it non-blocking so the user can monitor progress.
+### 1. List channels
 
-3. Report the results to the user. The script will output:
-   - Total videos found
-   - Per-video download status (success / no subtitle / skipped / error)
-   - Final summary with counts
+```bash
+{baseDir}/.venv/bin/python {baseDir}/query_db.py channels
+```
+
+Returns every channel that has videos, with video counts and subtitle counts.
+
+### 2. Query videos
+
+```bash
+{baseDir}/.venv/bin/python {baseDir}/query_db.py videos [options]
+```
+
+Options:
+- `--channel HANDLE_OR_ID` — Filter by channel handle (e.g. `thu4878`) or channel ID
+- `--search KEYWORD` — Search in title and subtitle full text (case-insensitive)
+- `--status STATUS` — Filter by status (`success`, `no_subtitle`, `skipped`, `error`)
+- `--limit N` — Max results (default: 20, max: 500)
+- `--offset N` — Skip first N results (for pagination)
+- `--id ID` — Fetch a single video by its database ID
+- `--full` — Show complete subtitle text instead of preview
+
+### 3. View statistics
+
+```bash
+{baseDir}/.venv/bin/python {baseDir}/query_db.py stats [--channel HANDLE_OR_ID]
+```
+
+Returns total channel/video counts and a breakdown by status.
 
 ## Output format
 
-Relay the script's terminal output to the user. After completion, summarize:
+Each video is output in a stable structured format:
 
-- Total videos processed
-- Subtitles downloaded successfully
-- Videos with no available subtitles
-- Any errors encountered
+```
+ID: <id>
+标题: <title>
+来源: youtube
+频道: <channel title>
+视频ID: <video_id>
+原始链接: <video_url>
+字幕语言: <subtitle_lang>
+状态: <status>
+本地字幕: <subtitle_path>     (if present)
+字幕预览: <first 200 chars>   (default)
+--- 字幕全文 ---             (with --full flag)
+<full subtitle text>
+```
 
-Subtitles are saved to `{baseDir}/subtitles/<channel_handle>/` in SRT format.
-
-## Guardrails
-
-- Never modify or delete existing subtitle files.
-- Never modify `cookies.txt`.
-- If the script reports HTTP 429 (rate limited), tell the user to wait 10-30 minutes before retrying.
-- If the script reports "Sign in to confirm you're not a bot", tell the user their `cookies.txt` may be expired and needs to be refreshed.
-- Do not attempt to download videos or audio — this skill is for subtitles only.
-
-## Failure handling
-
-- If `cookies.txt` is missing, tell the user to export YouTube cookies using a browser extension (e.g. Cookie-Editor) in Netscape format and save to `{baseDir}/cookies.txt`.
-- If `.venv` does not exist, run: `cd {baseDir} && python3 -m venv .venv && .venv/bin/pip install "yt-dlp @ git+https://github.com/yt-dlp/yt-dlp.git"`
-- If rate limited (429), the script auto-stops and saves progress. The user can simply re-run the same command later to resume.
+Videos are separated by `============` lines.
 
 ## Examples
 
-User: "请下载YouTube thu4878 频道下的所有字幕"
-Action: `cd {baseDir} && .venv/bin/python channel_subtitles.py thu4878`
+User says: "看看数据库里抓了哪些YouTube频道"
+→ Run: `{baseDir}/.venv/bin/python {baseDir}/query_db.py channels`
 
-User: "下载 https://www.youtube.com/@laogao 的字幕"
-Action: `cd {baseDir} && .venv/bin/python channel_subtitles.py "https://www.youtube.com/@laogao"`
+User says: "搜索YouTube字幕里提到 transformer 的视频"
+→ Run: `{baseDir}/.venv/bin/python {baseDir}/query_db.py videos --search transformer`
 
-User: "Download subtitles from 3blue1brown channel"
-Action: `cd {baseDir} && .venv/bin/python channel_subtitles.py 3blue1brown`
+User says: "查 thu4878 频道最近10个视频"
+→ Run: `{baseDir}/.venv/bin/python {baseDir}/query_db.py videos --channel thu4878 --limit 10`
+
+User says: "查看ID为42的视频字幕全文"
+→ Run: `{baseDir}/.venv/bin/python {baseDir}/query_db.py videos --id 42 --full`
+
+User says: "哪些视频没有字幕"
+→ Run: `{baseDir}/.venv/bin/python {baseDir}/query_db.py videos --status no_subtitle`
+
+User says: "YouTube数据库里有多少视频"
+→ Run: `{baseDir}/.venv/bin/python {baseDir}/query_db.py stats`
+
+User says: "看看 laogao 频道的统计"
+→ Run: `{baseDir}/.venv/bin/python {baseDir}/query_db.py stats --channel laogao`
+
+## Setup
+
+This skill shares the virtual environment and `.env` with the YouTube crawler.
+If the environment is missing, run the `youtube-setup` skill (`SKILL_SETUP.md`).
+Database connection is configured via `{baseDir}/.env` (read-only user).

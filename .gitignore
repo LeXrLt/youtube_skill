@@ -15,6 +15,11 @@ subtitles/
 *.srt
 download_progress.json
 
+# Python cache / build
+*.egg-info/
+build/
+dist/
+
 # IDEs
 .vscode/
 .idea/
