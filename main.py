@@ -36,7 +36,7 @@ def get_db_connection():
     )
 
 
-def crawl_target(conn, client: FinancialHubClient, target, max_items: int = 0):
+def crawl_target(conn, client: FinancialHubClient, target, max_items: int = 0, file_path: str | None = None):
     """对单个 YouTube 目标执行一次完整抓取周期。"""
     print(f"\n{'─' * 50}")
     print(f"目标: [{target.id}] {target.target_name} ({target.target_identifier})")
@@ -76,7 +76,8 @@ def crawl_target(conn, client: FinancialHubClient, target, max_items: int = 0):
         pending = [v for v in videos if v["id"] not in done]
         print(f"[3/4] 共 {items_found} 个视频，已完成 {len(done)}，待下载 {len(pending)}")
 
-        channel_output_dir = os.path.join(config.OUTPUT_DIR, handle or channel_id)
+        output_root = file_path if file_path else config.OUTPUT_DIR
+        channel_output_dir = os.path.join(output_root, handle or channel_id)
 
         # ── Step 3: 逐个下载字幕并写库 ──
         for idx, video in enumerate(pending, 1):
@@ -165,7 +166,18 @@ def main():
         "-n", "--max-items", type=int, default=0,
         help="每个频道最多抓取的视频数（默认 0 = 不限制）",
     )
+    parser.add_argument(
+        "-f", "--file-path", type=str, default=None,
+        help="指定字幕文件的保存根路径（默认使用项目内 subtitles/ 目录）",
+    )
     args = parser.parse_args()
+
+    # 解析 file_path 为绝对路径并确保目录存在
+    file_path = None
+    if args.file_path:
+        file_path = os.path.abspath(args.file_path)
+        os.makedirs(file_path, exist_ok=True)
+        print(f"字幕文件将保存到: {file_path}")
 
     print("=" * 60)
     print(" YouTube Channel Subtitle Crawler")
@@ -198,7 +210,7 @@ def main():
             sys.exit(1)
 
         for target in targets:
-            crawl_target(conn, client, target, max_items=args.max_items)
+            crawl_target(conn, client, target, max_items=args.max_items, file_path=file_path)
 
     finally:
         conn.close()
