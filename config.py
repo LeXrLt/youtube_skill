@@ -14,7 +14,11 @@ SUBTITLE_LANGS = ["zh-Hans", "zh-CN", "en"]
 SUBTITLE_FORMAT = "srt"
 
 # 字幕本地输出目录
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "subtitles")
+# 优先使用环境变量 CRAWLER_OUTPUT_DIR（由 financial_hub 在下载根目录后拼接 source_type 注入），
+# 未设置时回退到项目内 subtitles 目录。
+OUTPUT_DIR = os.getenv("CRAWLER_OUTPUT_DIR") or os.path.join(
+    os.path.dirname(__file__), "subtitles"
+)
 
 # 每个视频下载后的限速（秒），避免被 YouTube 限流
 DOWNLOAD_DELAY = 1
